@@ -5,6 +5,8 @@ from matplotlib.colors import ListedColormap
 import matplotlib.animation as animation
 
 
+# Based on Reichenbach, Mobilia & Frey (2007)
+# "Mobility promotes and jeopardizes biodiversity in rock–paper–scissors games"
 class Grid:
     def __init__(self, n, max_steps):
         self.length = n
