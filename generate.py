@@ -14,8 +14,8 @@ class Grid:
         self.grid = self.initial_grid()
         self.max_steps = max_steps
         self.current_step_count = 0
-        self.album = []
         self.img_frames = []
+        self.first_frame = None
 
         exchan_var = 0.8
         reprod_var = select_var = 1
@@ -33,8 +33,6 @@ class Grid:
             self.one_time_step()
             self.current_step_count += 1
             print(self.current_step_count)
-
-        self.save_image()
 
     def initial_grid(self):
         # Initialises the randomly populated grid
@@ -64,7 +62,7 @@ class Grid:
             reaction(cell_coord, neighbour_coord)
             reaction_count += 1
 
-        self.album.append(np.copy(self.grid))
+        self.img_frames.append(np.copy(self.grid))
 
     def exchange(self, cell_coord, neighbour_coord):
         # Swaps positions with a neighbouring cell
@@ -88,21 +86,26 @@ class Grid:
                 self.grid[new_x][new_y] = self.grid[x][y]
 
     def save_image(self):
-        for ind, grid in enumerate(self.album):
-            cmap = ListedColormap(["black", "red", "blue", "yellow"])
-            image = plt.imshow(grid, cmap=cmap, interpolation='nearest', animated=True)
-            self.img_frames.append([image])
-            plt.axis('off')
+        for ind, grid in enumerate(self.img_frames):
             plt.savefig(f"frame_{ind}.png")
 
     def save_video(self):
-        fig = plt.figure()
-        anim = animation.ArtistAnimation(fig, self.img_frames, blit=True)
-        video.save("movie.mp4", writer=animation.FFMpegWriter(fps=60))
+        fig, ax = plt.subplots()
+        plt.rcParams["animation.ffmpeg_path"] = "/usr/local/bin/ffmpeg"
+        cmap = ListedColormap(["black", "red", "blue", "yellow"])
+
+        self.first_frame = ax.imshow(self.img_frames[0], cmap=cmap, interpolation='nearest', animated=True)
+        anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
+        anim.save("movie.mp4", writer=animation.FFMpegWriter(fps=60))
         plt.close()
 
+    def animate(self, frame):
+        next_frame = self.img_frames[frame]
+        self.first_frame.set_array(next_frame)
+        return next_frame
 
-test = Grid(200, 5)
+
+test = Grid(200, 1000)
 test.call()
 test.save_video()
 
