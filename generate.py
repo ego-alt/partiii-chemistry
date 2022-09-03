@@ -105,7 +105,7 @@ class Grid:
         return next_frame
 
 
-test = Grid(200, 1000)
+test = Grid(400, 1000)
 test.call()
 test.save_video()
 
