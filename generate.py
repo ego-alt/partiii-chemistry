@@ -16,14 +16,13 @@ class Grid:
         self.img_frames = []  # Stores the grid array at every time step
         self.first_frame = None  # Initialises the first frame for animation later
 
-        exchan_var = 0.6
+        exchan_var = 0.005
         reprod_var = select_var = 1
         self.total_prob = exchan_var + reprod_var + select_var
 
         exchan_prob = self.probability(exchan_var)  # Average probability of exchange in the next time step dt
         reprod_prob = self.probability(reprod_var)  # Average probability of reproduction in the next time step dt
         select_prob = self.probability(select_var)  # Average probability of selection in the next time step dt
-
         self.diff_prob = [exchan_prob, reprod_prob, select_prob]
         self.one_time_step = one_time_step
 
@@ -34,6 +33,28 @@ class Grid:
             self.current_step_count += 1
             if self.current_step_count % 10 == 0:
                 print(f"Total number of steps: {self.current_step_count}")
+
+    def exchange(self, grid, cell_coord, neighbour_coord):
+        # Swaps positions with a neighbouring cell
+        x, y = cell_coord[0], cell_coord[1]
+        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
+        grid[x][y], grid[new_x][new_y] = grid[new_x][new_y], grid[x][y]
+
+    def selection(self, grid, cell_coord, neighbour_coord):
+        # Destroys a neighbouring cell via the "rock-paper-scissors" mechanic
+        # Type A destroys B, type B destroys C, type C destroys A
+        x, y = cell_coord[0], cell_coord[1]
+        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
+        cell_index = (self.cell_status.index(grid[x][y]) + 1) % len(self.cell_status)
+        if grid[new_x][new_y] == self.cell_status[cell_index]:
+            grid[new_x][new_y] = 0
+
+    def reproduction(self, grid, cell_coord, neighbour_coord):
+        # Generates a new cell of the same type in the neighbouring position
+        x, y = cell_coord[0], cell_coord[1]
+        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
+        if grid[new_x][new_y] == 0:
+            grid[new_x][new_y] = grid[x][y]
 
     def probability(self, variable):
         # Calculates the probability of exchange, reproduction or selection
@@ -93,32 +114,10 @@ class PlainGrid(Grid):
                 # Randomly chooses one event: exchange, selection, reproduction
                 # Only valid if a cell occupies the chosen coordinates, ie value != 0
                 reaction = random.choices(self.dispatcher, weights=self.diff_prob)[0]
-                reaction(cell_coord, neighbour_coord)
+                reaction(self.grid, cell_coord, neighbour_coord)
                 reaction_count += 1
 
         self.img_frames.append(np.copy(self.grid))
-
-    def exchange(self, cell_coord, neighbour_coord):
-        # Swaps positions with a neighbouring cell
-        x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        self.grid[x][y], self.grid[new_x][new_y] = self.grid[new_x][new_y], self.grid[x][y]
-
-    def selection(self, cell_coord, neighbour_coord):
-        # Destroys a neighbouring cell via the "rock-paper-scissors" mechanic
-        # Type A destroys B, type B destroys C, type C destroys A
-        x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        cell_index = (self.cell_status.index(self.grid[x][y]) + 1) % len(self.cell_status)
-        if self.grid[new_x][new_y] == self.cell_status[cell_index]:
-            self.grid[new_x][new_y] = 0
-
-    def reproduction(self, cell_coord, neighbour_coord):
-        # Generates a new cell of the same type in the neighbouring position
-        x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        if self.grid[new_x][new_y] == 0:
-            self.grid[new_x][new_y] = self.grid[x][y]
 
 
 class BorderGrid(Grid):
@@ -130,23 +129,38 @@ class BorderGrid(Grid):
     def initial_grid(self):
         # Initialises the randomly populated grid
         grid = np.random.randint(self.cell_status[0], self.cell_status[-1] + 1, size=(self.length - 1, self.length - 1))
-        np.pad(grid, pad_width=1, mode='constant', constant_values=0)
+        grid = np.pad(grid, pad_width=1, mode='constant', constant_values=0)  # Initialises an empty border
         return grid
 
     def one_time_step(self):
-        pass
+        reaction_count = 0
+        num_cells = (self.length - 1) * (self.length - 1)
+        while reaction_count < num_cells:
+            # Randomly chooses cell coordinates
+            x = random.randrange(1, len(self.grid) - 1)
+            y = random.randrange(1, len(self.grid) - 1)
+            cell_coord = [x, y]
+            border_edge = {1: 1, (len(self.grid) - 2): -1}
 
-    def exchange(self):
-        pass
+            if self.grid[x][y]:
+                # Randomly chooses one of four (central) or three (beside the fixed border) neighbours
+                x_or_y = random.randint(0, 1)
+                neighbour_coord = cell_coord.copy()
+                if neighbour_coord[x_or_y] in border_edge:
+                    neighbour_coord[x_or_y] += border_edge[neighbour_coord[x_or_y]]
+                else:
+                    neighbour_coord[x_or_y] += random.choice([-1, 1])
 
-    def reproduction(self):
-        pass
+                # Randomly chooses one event: exchange, selection, reproduction
+                # Only valid if a cell occupies the chosen coordinates, ie value != 0
+                reaction = random.choices(self.dispatcher, weights=self.diff_prob)[0]
+                reaction(self.grid, cell_coord, neighbour_coord)
+                reaction_count += 1
 
-    def selection(self):
-        pass
+        self.img_frames.append(np.copy(self.grid))
 
 
-test = PlainGrid(200, 1000)
+test = BorderGrid(200, 1000)
 test.call()
 test.save_video()
 
