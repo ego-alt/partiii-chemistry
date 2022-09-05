@@ -8,41 +8,72 @@ import matplotlib.animation as animation
 # Based on Reichenbach, Mobilia & Frey (2007)
 # "Mobility promotes and jeopardizes biodiversity in rock–paper–scissors games"
 class Grid:
-    def __init__(self, n, max_steps):
+    def __init__(self, n, max_steps, one_time_step):
         self.length = n
-        self.cell_status = [1, 2, 3]  # 0=dead, 1=type A, 2=type B, 3=type C
-        self.grid = self.initial_grid()
+        self.cell_status = [1, 2, 3]  # 1=type A, 2=type B, 3=type C
         self.max_steps = max_steps
-        self.current_step_count = 0
-        self.img_frames = []
-        self.first_frame = None
+        self.current_step_count = 0  # Counts the number of time steps
+        self.img_frames = []  # Stores the grid array at every time step
+        self.first_frame = None  # Initialises the first frame for animation later
 
-        exchan_var = 0.8
+        exchan_var = 0.6
         reprod_var = select_var = 1
         self.total_prob = exchan_var + reprod_var + select_var
+
         exchan_prob = self.probability(exchan_var)  # Average probability of exchange in the next time step dt
         reprod_prob = self.probability(reprod_var)  # Average probability of reproduction in the next time step dt
         select_prob = self.probability(select_var)  # Average probability of selection in the next time step dt
 
         self.diff_prob = [exchan_prob, reprod_prob, select_prob]
-        self.dispatcher = [self.exchange, self.reproduction, self.selection]
+        self.one_time_step = one_time_step
 
     def call(self):
         # Reiterates each time step until the step limit has been reached
         while self.current_step_count < self.max_steps:
             self.one_time_step()
             self.current_step_count += 1
-            print(self.current_step_count)
-
-    def initial_grid(self):
-        # Initialises the randomly populated grid
-        grid = np.random.randint(self.cell_status[0], self.cell_status[-1] + 1, size=(self.length, self.length))
-        return grid
+            if self.current_step_count % 10 == 0:
+                print(f"Total number of steps: {self.current_step_count}")
 
     def probability(self, variable):
         # Calculates the probability of exchange, reproduction or selection
         probability = variable / self.total_prob
         return probability
+
+    def save_image(self):
+        # Saves each successive iteration of the grid as a .png
+        for ind, grid in enumerate(self.img_frames):
+            cmap = ListedColormap(["black", "red", "blue", "yellow"])
+            plt.imshow(grid, cmap=cmap, interpolation='nearest')
+            plt.savefig(f"frame_{ind}.png")
+
+    def save_video(self):
+        # Generates a .mp4 from the time evolution of the grid
+        fig, ax = plt.subplots()
+        plt.rcParams["animation.ffmpeg_path"] = "/usr/local/bin/ffmpeg"
+        cmap = ListedColormap(["black", "red", "blue", "yellow"])
+
+        self.first_frame = ax.imshow(self.img_frames[0], cmap=cmap, interpolation='nearest', animated=True)
+        anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
+        anim.save("output/movie.mp4", writer=animation.FFMpegWriter(fps=60))
+        plt.close()
+
+    def animate(self, frame):
+        next_frame = self.img_frames[frame]
+        self.first_frame.set_array(next_frame)
+        return next_frame
+
+
+class PlainGrid(Grid):
+    def __init__(self, n, max_steps):
+        Grid.__init__(self, n, max_steps, self.one_time_step)
+        self.grid = self.initial_grid()
+        self.dispatcher = [self.exchange, self.reproduction, self.selection]
+
+    def initial_grid(self):
+        # Initialises the randomly populated grid
+        grid = np.random.randint(self.cell_status[0], self.cell_status[-1] + 1, size=(self.length, self.length))
+        return grid
 
     def one_time_step(self):
         reaction_count = 0
@@ -53,14 +84,17 @@ class Grid:
             y = random.randrange(len(self.grid))
             cell_coord = [x, y]
 
-            # Randomly chooses one of four neighbours (up, down, left, right)
-            x_or_y = random.randint(0, 1)
-            neighbour_coord = cell_coord.copy()
-            neighbour_coord[x_or_y] = (neighbour_coord[x_or_y] + random.choice([-1, 1])) % self.length
+            if self.grid[x][y]:
+                # Randomly chooses one of four neighbours: up, down, left, right
+                x_or_y = random.randint(0, 1)
+                neighbour_coord = cell_coord.copy()
+                neighbour_coord[x_or_y] = (neighbour_coord[x_or_y] + random.choice([-1, 1])) % self.length
 
-            reaction = random.choices(self.dispatcher, weights=self.diff_prob)[0]
-            reaction(cell_coord, neighbour_coord)
-            reaction_count += 1
+                # Randomly chooses one event: exchange, selection, reproduction
+                # Only valid if a cell occupies the chosen coordinates, ie value != 0
+                reaction = random.choices(self.dispatcher, weights=self.diff_prob)[0]
+                reaction(cell_coord, neighbour_coord)
+                reaction_count += 1
 
         self.img_frames.append(np.copy(self.grid))
 
@@ -71,41 +105,48 @@ class Grid:
         self.grid[x][y], self.grid[new_x][new_y] = self.grid[new_x][new_y], self.grid[x][y]
 
     def selection(self, cell_coord, neighbour_coord):
+        # Destroys a neighbouring cell via the "rock-paper-scissors" mechanic
+        # Type A destroys B, type B destroys C, type C destroys A
         x, y = cell_coord[0], cell_coord[1]
         new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        if self.grid[x][y]:
-            cell_index = (self.cell_status.index(self.grid[x][y]) + 1) % len(self.cell_status)
-            if self.grid[new_x][new_y] == self.cell_status[cell_index]:
-                self.grid[new_x][new_y] = 0
+        cell_index = (self.cell_status.index(self.grid[x][y]) + 1) % len(self.cell_status)
+        if self.grid[new_x][new_y] == self.cell_status[cell_index]:
+            self.grid[new_x][new_y] = 0
 
     def reproduction(self, cell_coord, neighbour_coord):
+        # Generates a new cell of the same type in the neighbouring position
         x, y = cell_coord[0], cell_coord[1]
         new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        if self.grid[x][y]:
-            if self.grid[new_x][new_y] == 0:
-                self.grid[new_x][new_y] = self.grid[x][y]
-
-    def save_image(self):
-        for ind, grid in enumerate(self.img_frames):
-            plt.savefig(f"frame_{ind}.png")
-
-    def save_video(self):
-        fig, ax = plt.subplots()
-        plt.rcParams["animation.ffmpeg_path"] = "/usr/local/bin/ffmpeg"
-        cmap = ListedColormap(["black", "red", "blue", "yellow"])
-
-        self.first_frame = ax.imshow(self.img_frames[0], cmap=cmap, interpolation='nearest', animated=True)
-        anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
-        anim.save("movie.mp4", writer=animation.FFMpegWriter(fps=60))
-        plt.close()
-
-    def animate(self, frame):
-        next_frame = self.img_frames[frame]
-        self.first_frame.set_array(next_frame)
-        return next_frame
+        if self.grid[new_x][new_y] == 0:
+            self.grid[new_x][new_y] = self.grid[x][y]
 
 
-test = Grid(400, 1000)
+class BorderGrid(Grid):
+    def __init__(self, n, max_steps):
+        Grid.__init__(self, n, max_steps, self.one_time_step)
+        self.grid = self.initial_grid()
+        self.dispatcher = [self.exchange, self.reproduction, self.selection]
+
+    def initial_grid(self):
+        # Initialises the randomly populated grid
+        grid = np.random.randint(self.cell_status[0], self.cell_status[-1] + 1, size=(self.length - 1, self.length - 1))
+        np.pad(grid, pad_width=1, mode='constant', constant_values=0)
+        return grid
+
+    def one_time_step(self):
+        pass
+
+    def exchange(self):
+        pass
+
+    def reproduction(self):
+        pass
+
+    def selection(self):
+        pass
+
+
+test = PlainGrid(200, 1000)
 test.call()
 test.save_video()
 
