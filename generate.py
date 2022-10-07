@@ -7,6 +7,8 @@ import matplotlib.animation as animation
 
 # Based on Reichenbach, Mobilia & Frey (2007)
 # "Mobility promotes and jeopardizes biodiversity in rock–paper–scissors games"
+
+# NOTE: Grid defines the function for reiterating time steps, interaction methods, and image/video processing
 class Grid:
     def __init__(self, n, max_steps, one_time_step):
         self.length = n
@@ -16,14 +18,12 @@ class Grid:
         self.img_frames = []  # Stores the grid array at every time step
         self.first_frame = None  # Initialises the first frame for animation later
 
-        exchan_var = 0.005
-        reprod_var = select_var = 1
-        self.total_prob = exchan_var + reprod_var + select_var
+        action = {"exchange": 0.005, "reproduction": 1, "selection": 1, "death": 0.2}
+        self.dispatcher = [self.exchange, self.reproduction, self.selection, self.death]
+        total_prob = sum(action.values())
 
-        exchan_prob = self.probability(exchan_var)  # Average probability of exchange in the next time step dt
-        reprod_prob = self.probability(reprod_var)  # Average probability of reproduction in the next time step dt
-        select_prob = self.probability(select_var)  # Average probability of selection in the next time step dt
-        self.diff_prob = [exchan_prob, reprod_prob, select_prob]
+        # Average probability of an interaction in the next time step dt
+        self.diff_prob = [i / total_prob for i in action.values()]
         self.one_time_step = one_time_step
 
     def call(self):
@@ -56,10 +56,25 @@ class Grid:
         if grid[new_x][new_y] == 0:
             grid[new_x][new_y] = grid[x][y]
 
-    def probability(self, variable):
-        # Calculates the probability of exchange, reproduction or selection
-        probability = variable / self.total_prob
-        return probability
+    def death(self, grid, cell_coord, *args):
+        # Cell leaves a vacant position after death
+        x, y = cell_coord[0], cell_coord[1]
+        grid[x][y] = 0
+
+    def replacement(self, grid, cell_coord, neighbour_coord):
+        # Replaces a neighbouring cell via the "rock-paper-scissors" mechanic
+        # Based off dominance-replacement in Szczesny, Mobilia & Rucklidge (2014)
+        x, y = cell_coord[0], cell_coord[1]
+        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
+        cell_index = (self.cell_status.index(grid[x][y]) + 1) % len(self.cell_status)
+        if grid[new_x][new_y] == self.cell_status[cell_index]:
+            grid[new_x][new_y] = grid[x][y]
+
+    def mutation(self, grid, cell_coord):
+        # Mutates one cell type into the other
+        x, y = cell_coord[0], cell_coord[1]
+        cell_index = (self.cell_status.index(grid[x][y]) + 1) % len(self.cell_status)
+        grid[x][y] = self.cell_status[cell_index]
 
     def save_image(self):
         # Saves each successive iteration of the grid as a .png
@@ -85,11 +100,11 @@ class Grid:
         return next_frame
 
 
+# Different types of Grid define the initial grid set-up, additional interaction rules, and each time step
 class PlainGrid(Grid):
     def __init__(self, n, max_steps):
         Grid.__init__(self, n, max_steps, self.one_time_step)
         self.grid = self.initial_grid()
-        self.dispatcher = [self.exchange, self.reproduction, self.selection]
 
     def initial_grid(self):
         # Initialises the randomly populated grid
@@ -120,11 +135,10 @@ class PlainGrid(Grid):
         self.img_frames.append(np.copy(self.grid))
 
 
-class BorderGrid(Grid):
+"""class BorderGrid(Grid):
     def __init__(self, n, max_steps):
         Grid.__init__(self, n, max_steps, self.one_time_step)
         self.grid = self.initial_grid()
-        self.dispatcher = [self.exchange, self.reproduction, self.selection]
 
     def initial_grid(self):
         # Initialises the randomly populated grid
@@ -157,10 +171,9 @@ class BorderGrid(Grid):
                 reaction(self.grid, cell_coord, neighbour_coord)
                 reaction_count += 1
 
-        self.img_frames.append(np.copy(self.grid))
+        self.img_frames.append(np.copy(self.grid))"""
 
 
-test = BorderGrid(200, 1000)
+test = PlainGrid(200, 40)
 test.call()
 test.save_video()
-
