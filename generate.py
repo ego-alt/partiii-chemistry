@@ -5,26 +5,35 @@ from matplotlib.colors import ListedColormap
 import matplotlib.animation as animation
 
 
-# Based on Reichenbach, Mobilia & Frey (2007)
 # "Mobility promotes and jeopardizes biodiversity in rock–paper–scissors games"
 
-# NOTE: Grid defines the function for reiterating time steps, interaction methods, and image/video processing
 class Grid:
-    def __init__(self, n, max_steps, one_time_step):
+    # Defines the function for reiterating time steps, interaction methods, and image/video processing
+    def __init__(self, n, max_steps, one_time_step, ising_on):
         self.length = n
         self.cell_status = [1, 2, 3]  # 1=type A, 2=type B, 3=type C
         self.max_steps = max_steps
         self.current_step_count = 0  # Counts the number of time steps
         self.img_frames = []  # Stores the grid array at every time step
         self.first_frame = None  # Initialises the first frame for animation later
+        self.ising_on = ising_on  # TRUE/FALSE for biased diffusion
 
-        action = {"exchange": 0.005, "reproduction": 1, "selection": 1, "death": 0.2}
-        self.dispatcher = [self.exchange, self.reproduction, self.selection, self.death]
-        total_prob = sum(action.values())
+        # Parameters set in Reichenbach, Mobilia & Frey (2007)
+        self.reprod_param = 1
+        self.selec_param = 1
+        self.exchan_param = 0.005  # M = 2 * exchange_param / max_steps = 1e-4
+
+        # Newly introduced parameters
+        self.death_param = 0.6
+        self.ising_param = 0.003
+        parameters = [self.exchan_param, self.reprod_param, self.selec_param, self.death_param]
 
         # Average probability of an interaction in the next time step dt
-        self.diff_prob = [i / total_prob for i in action.values()]
+        total_prob = sum(parameters)
+        self.diff_prob = [i / total_prob for i in parameters]
         self.one_time_step = one_time_step
+
+        self.dispatcher = [self.exchange, self.reproduction, self.selection, self.death]
 
     def call(self):
         # Reiterates each time step until the step limit has been reached
@@ -34,47 +43,57 @@ class Grid:
             if self.current_step_count % 10 == 0:
                 print(f"Total number of steps: {self.current_step_count}")
 
-    def exchange(self, grid, cell_coord, neighbour_coord):
-        # Swaps positions with a neighbouring cell
+    def call_neighbours(self, cell_coord):
         x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        grid[x][y], grid[new_x][new_y] = grid[new_x][new_y], grid[x][y]
+        neighbours = [(x, (y + 1) % self.length),
+                      (x, (y - 1) % self.length),
+                      ((x + 1) % self.length, y),
+                      ((x - 1) % self.length, y)]
+        return neighbours
 
-    def selection(self, grid, cell_coord, neighbour_coord):
+    def exchange(self, grid, cell, neighbour):
+        # Swaps positions with a neighbouring cell
+        if self.ising_on:
+            ising_neighbours = self.call_neighbours(neighbour)
+            num_empty = len([grid[i] for i in ising_neighbours if grid[i] == 0])
+            num_threshold = - (-len(ising_neighbours) // 2)
+
+            a = 2 * num_empty - len(ising_neighbours)
+            diff_threshold = np.exp(-2 * a * self.ising_param)
+
+            if num_empty < num_threshold or np.random.rand() < diff_threshold:
+                grid[cell], grid[neighbour] = grid[neighbour], grid[cell]
+
+        else:
+            grid[cell], grid[neighbour] = grid[neighbour], grid[cell]
+
+    def selection(self, grid, cell, neighbour):
         # Destroys a neighbouring cell via the "rock-paper-scissors" mechanic
         # Type A destroys B, type B destroys C, type C destroys A
-        x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        cell_index = (self.cell_status.index(grid[x][y]) + 1) % len(self.cell_status)
-        if grid[new_x][new_y] == self.cell_status[cell_index]:
-            grid[new_x][new_y] = 0
+        cell_index = (self.cell_status.index(grid[cell]) + 1) % len(self.cell_status)
+        if grid[neighbour] == self.cell_status[cell_index]:
+            grid[neighbour] = 0
 
-    def reproduction(self, grid, cell_coord, neighbour_coord):
+    def reproduction(self, grid, cell, neighbour):
         # Generates a new cell of the same type in the neighbouring position
-        x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        if grid[new_x][new_y] == 0:
-            grid[new_x][new_y] = grid[x][y]
+        if grid[neighbour] == 0:
+            grid[neighbour] = grid[cell]
 
-    def death(self, grid, cell_coord, *args):
+    def death(self, grid, cell, _):
         # Cell leaves a vacant position after death
-        x, y = cell_coord[0], cell_coord[1]
-        grid[x][y] = 0
+        grid[cell] = 0
 
-    def replacement(self, grid, cell_coord, neighbour_coord):
+    def replacement(self, grid, cell, neighbour):
         # Replaces a neighbouring cell via the "rock-paper-scissors" mechanic
         # Based off dominance-replacement in Szczesny, Mobilia & Rucklidge (2014)
-        x, y = cell_coord[0], cell_coord[1]
-        new_x, new_y = neighbour_coord[0], neighbour_coord[1]
-        cell_index = (self.cell_status.index(grid[x][y]) + 1) % len(self.cell_status)
-        if grid[new_x][new_y] == self.cell_status[cell_index]:
-            grid[new_x][new_y] = grid[x][y]
+        cell_index = (self.cell_status.index(grid[cell]) + 1) % len(self.cell_status)
+        if grid[neighbour] == self.cell_status[cell_index]:
+            grid[neighbour] = grid[cell]
 
-    def mutation(self, grid, cell_coord):
+    def mutation(self, grid, cell, _):
         # Mutates one cell type into the other
-        x, y = cell_coord[0], cell_coord[1]
-        cell_index = (self.cell_status.index(grid[x][y]) + 1) % len(self.cell_status)
-        grid[x][y] = self.cell_status[cell_index]
+        cell_index = (self.cell_status.index(grid[cell]) + 1) % len(self.cell_status)
+        grid[cell] = self.cell_status[cell_index]
 
     def save_image(self):
         # Saves each successive iteration of the grid as a .png
@@ -100,10 +119,10 @@ class Grid:
         return next_frame
 
 
-# Different types of Grid define the initial grid set-up, additional interaction rules, and each time step
 class PlainGrid(Grid):
-    def __init__(self, n, max_steps):
-        Grid.__init__(self, n, max_steps, self.one_time_step)
+    # Defines the initial grid set-up, additional interaction rules, and each time step
+    def __init__(self, n, max_steps, ising_on=False):
+        Grid.__init__(self, n, max_steps, self.one_time_step, ising_on)
         self.grid = self.initial_grid()
 
     def initial_grid(self):
@@ -118,16 +137,12 @@ class PlainGrid(Grid):
             # Randomly chooses cell coordinates
             x = random.randrange(len(self.grid))
             y = random.randrange(len(self.grid))
-            cell_coord = [x, y]
+            cell_coord = (x, y)
 
-            if self.grid[x][y]:
+            if self.grid[x][y]:  # Only valid if a cell occupies the chosen coordinates, ie value != 0
                 # Randomly chooses one of four neighbours: up, down, left, right
-                x_or_y = random.randint(0, 1)
-                neighbour_coord = cell_coord.copy()
-                neighbour_coord[x_or_y] = (neighbour_coord[x_or_y] + random.choice([-1, 1])) % self.length
-
-                # Randomly chooses one event: exchange, selection, reproduction
-                # Only valid if a cell occupies the chosen coordinates, ie value != 0
+                neighbour_coord = random.choice(self.call_neighbours(cell_coord))
+                # Randomly chooses one event: exchange, selection, reproduction, death
                 reaction = random.choices(self.dispatcher, weights=self.diff_prob)[0]
                 reaction(self.grid, cell_coord, neighbour_coord)
                 reaction_count += 1
@@ -173,7 +188,6 @@ class PlainGrid(Grid):
 
         self.img_frames.append(np.copy(self.grid))"""
 
-
-test = PlainGrid(200, 40)
+test = PlainGrid(200, 50, ising_on=True)
 test.call()
 test.save_video()
