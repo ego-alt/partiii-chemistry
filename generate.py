@@ -8,48 +8,49 @@ from tqdm import tqdm
 
 # "Mobility promotes and jeopardizes biodiversity in rock–paper–scissors games." Reichenbach, Mobilia & Frey (2007)
 
-REPRODUCTION_PARAM = 0  # A + 0 --> A + A
-SELECTION_PARAM = 0  # A + B --> A + 0
-EXCHANGE_PARAM = 1  # M = 2 * exchange_param / number of sites
-# Newly introduced parameters
-ISING_PARAM = 1.7
-DEATH_PARAM = 0
-# Additional parameters set in Szczesny, Mobilia & Rucklidge (2014)
-REPLACEMENT_PARAM = 0  # A + B --> A + A
-MUTATION_PARAM = 0  # A --> B
-
 SEED = 12345
 FILENAME = "./output/state.pickle"
-PERIODIC_BOUNDARY_ON = False
-ISING_ON = True  # TRUE/FALSE for biased diffusion
 
 
 class Grid:
     # Defines the function for reiterating time steps, interaction methods, and image/video processing
-    def __init__(self, n, max_steps, one_time_step, dispatcher):
+    def __init__(self, n, max_steps, one_time_step):
         self.length = n
         self.num_cells = n ** 2
         self.max_steps = max_steps
         self.current_step_count = 0  # Counts the number of time steps
         self.cell_status = [1, 2, 3]  # 1= type A(red), 2= type B(blue), 3= type C(yellow)
+        self.periodic_boundary_on = False
+        self.ising_on = False  # TRUE/FALSE for biased diffusion
+        self.one_time_step = one_time_step
+
+        self.reproduction_param = 1  # A + 0 --> A + A
+        self.selection_param = 1  # A + B --> A + 0
+        self.exchange_param = 1.e-6 * self.num_cells / 2  # M = 2 * exchange_param / number of sites
+        # Newly introduced parameters
+        self.ising_param = 1.2
+        self.death_param = 0.6
+        # Additional parameters set in Szczesny, Mobilia & Rucklidge (2014)
+        self.replacement_param = 0  # A + B --> A + A
+        self.mutation_param = 0  # A --> B
+
+        # Average probability of an interaction in the next time step dt
+        self.dispatcher = [self.exchange]
+        self.pairings = {"death": self.death_param,
+                         "exchange": self.exchange_param,
+                         "mutation": self.mutation_param,
+                         "selection": self.selection_param,
+                         "replacement": self.replacement_param,
+                         "reproduction": self.reproduction_param}
+
+        diff_prob = [self.pairings[d.__name__] for d in self.dispatcher]
+        total_prob = sum(diff_prob)
+        self.diff_prob = np.divide(diff_prob, total_prob)
 
         self.current_cell = ()
         self.current_neighbours = []
         self.img_frames = []  # Stores the grid array at every time step
         self.first_frame = None  # Initialises the first frame for animation later
-
-        pairings = {"exchange": EXCHANGE_PARAM,
-                    "selection": SELECTION_PARAM,
-                    "reproduction": REPRODUCTION_PARAM,
-                    "death": DEATH_PARAM,
-                    "replacement": REPLACEMENT_PARAM,
-                    "mutation": MUTATION_PARAM}
-
-        # Average probability of an interaction in the next time step dt
-        diff_prob = [pairings[d.__name__] for d in dispatcher]
-        total_prob = sum(diff_prob)
-        self.diff_prob = np.divide(diff_prob, total_prob)
-        self.one_time_step = one_time_step
 
     def call(self):
         # Reiterates each time step until the step limit has been reached
@@ -58,12 +59,10 @@ class Grid:
             self.current_step_count = i
 
         print("Simulation complete, now loading animation...")
-        self.save_video()
-        self.save_state()
 
     def call_neighbours(self, cell_coord):
         x, y = cell_coord[0], cell_coord[1]
-        if PERIODIC_BOUNDARY_ON:
+        if self.periodic_boundary_on:
             self.current_neighbours = [(x, (y + 1) % self.length),
                                        (x, (y - 1) % self.length),
                                        ((x + 1) % self.length, y),
@@ -82,10 +81,10 @@ class Grid:
         # Swaps positions with a neighbouring cell
         calc_original = self.calc_neighbours(grid, self.current_neighbours)
         grid[cell], grid[neighbour] = grid[neighbour], grid[cell]
-        if ISING_ON and grid[cell] == 0:
+        if self.ising_on and grid[cell] == 0:
             calc_new = self.calc_neighbours(grid, self.call_neighbours(neighbour))
             num_J = calc_original - calc_new
-            prob = min(1, np.exp(- num_J * ISING_PARAM))
+            prob = min(1, np.exp(- num_J * self.ising_param))
             if prob < np.random.rand():
                 grid[cell], grid[neighbour] = grid[neighbour], grid[cell]
 
@@ -141,36 +140,39 @@ class Grid:
         return next_frame
 
     def save_state(self):
-        total_cells = self.length ** 2
         state = {}
         prop_full, prop_dead = [], []
+        self.save_video()
 
         for grid in self.img_frames:
             ar_unique, i = np.unique(grid, return_counts=True)
-            prop_full.append(i[1:] / total_cells)
-            prop_dead.append(i[0] / total_cells)
+            prop_full.append(i[1:] / self.num_cells)
+            prop_dead.append(i[0] / self.num_cells)
 
-        state["param"] = {
-            "seed": SEED,
-            "system_size": total_cells,
-            "time_steps": self.max_steps
-        }
+        state["var"] = {"seed": SEED,
+                        "system_size": self.num_cells,
+                        "time_steps": self.max_steps}
 
-        state["data"] = {
-            "prop_full": prop_full,
-            "prop_dead": prop_dead,
-            "time_evol": self.img_frames
-        }
+        state["param"] = {"exchange": self.exchange_param,
+                          "death": self.death_param,
+                          "ising": self.ising_param,
+                          "mutation": self.mutation_param,
+                          "replacement": self.replacement_param,
+                          "reproduction": self.reproduction_param,
+                          "selection": self.selection_param}
+
+        state["data"] = {"prop_full": prop_full,
+                         "prop_dead": prop_dead,
+                         "time_evol": self.img_frames}
 
         with open(FILENAME, "wb") as file:
             pickle.dump(state, file)
 
 
 class PlainGrid(Grid):
-    # Defines the initial grid set-up, additional interaction rules, and each time step
+    # Defines the initial grid set-up and each time step
     def __init__(self, n, max_steps):
-        self.dispatcher = [self.exchange]
-        Grid.__init__(self, n, max_steps, self.one_time_step, self.dispatcher)
+        Grid.__init__(self, n, max_steps, self.one_time_step)
         self.grid = self.initial_grid()
 
     def initial_grid(self):
@@ -181,20 +183,13 @@ class PlainGrid(Grid):
 
     def one_time_step(self):
         reaction_count = 0
-        # while reaction_count < self.num_cells:
         while reaction_count < self.num_cells:
-            # Randomly chooses cell coordinates
-            cell_coord = (random.randrange(self.length), random.randrange(self.length))
-            if self.grid[cell_coord]:  # Only valid if a cell occupies the chosen coordinates, ie value != 0
-                # Randomly chooses one of four neighbours: up, down, left, right
-                neighbour_coord = random.choice(self.call_neighbours(cell_coord))
-                # Randomly chooses one event: exchange, selection, reproduction, death
-                reaction = np.random.choice(len(self.dispatcher), p=self.diff_prob)
+            cell_coord = tuple(np.random.choice(self.length, size=2))  # Randomly chooses cell coordinates
+            # Only valid if value at the chosen coordinates != 0
+            if self.grid[cell_coord]:
+                neighbour_coord = random.choice(self.call_neighbours(cell_coord))  # Randomly chooses one neighbour
+                reaction = np.random.choice(len(self.dispatcher), p=self.diff_prob)  # Randomly chooses one event
                 self.dispatcher[reaction](self.grid, cell_coord, neighbour_coord)
                 reaction_count += 1
 
         self.img_frames.append(np.copy(self.grid))
-
-
-test = PlainGrid(40, 2500)
-test.call()
