@@ -7,21 +7,20 @@ import matplotlib.animation as animation
 from tqdm import tqdm
 
 # "Mobility promotes and jeopardizes biodiversity in rock–paper–scissors games." Reichenbach, Mobilia & Frey (2007)
-
-SEED = 12345
-FILENAME = "./output/state.pickle"
+FFMPEG_PATH = "/usr/local/bin/ffmpeg"
 
 
 class Grid:
     # Defines the function for reiterating time steps, interaction methods, and image/video processing
-    def __init__(self, n, max_steps, one_time_step):
+    def __init__(self, seed, n, max_steps, one_time_step):
+        self.seed = seed
         self.length = n
         self.num_cells = n ** 2
         self.max_steps = max_steps
         self.current_step_count = 0  # Counts the number of time steps
         self.cell_status = [1, 2, 3]  # 1= type A(red), 2= type B(blue), 3= type C(yellow)
         self.periodic_boundary_on = False
-        self.ising_on = False  # TRUE/FALSE for biased diffusion
+        self.ising_on = True  # TRUE/FALSE for biased diffusion
         self.one_time_step = one_time_step
 
         self.reproduction_param = 1  # A + 0 --> A + A
@@ -123,33 +122,29 @@ class Grid:
             plt.imshow(grid, cmap=cmap, interpolation='nearest')
             plt.savefig(f"frame_{ind}.png")
 
-    def save_video(self):
+    def save_video(self, movie_path="./output/movie.mp4", ffmpeg_path=None):
         # Generates a .mp4 from the time evolution of the grid
         fig, ax = plt.subplots()
-        plt.rcParams["animation.ffmpeg_path"] = "/usr/local/bin/ffmpeg"
         cmap = ListedColormap(["black", "red", "blue", "yellow"])
-
         self.first_frame = ax.imshow(self.img_frames[0], cmap=cmap, interpolation='nearest', animated=True)
+
+        if ffmpeg_path:
+            plt.rcParams["animation.ffmpeg_path"] = ffmpeg_path
+
         anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
-        anim.save("./output/movie.mp4", writer=animation.FFMpegWriter(fps=60))
+        anim.save(movie_path, writer=animation.FFMpegWriter(fps=60))
         plt.close()
 
-    def animate(self, frame):
-        next_frame = self.img_frames[frame]
-        self.first_frame.set_array(next_frame)
-        return next_frame
-
-    def save_state(self):
+    def save_state(self, state_path="./output/state.pickle"):
         state = {}
         prop_full, prop_dead = [], []
-        self.save_video()
 
         for grid in self.img_frames:
             ar_unique, i = np.unique(grid, return_counts=True)
             prop_full.append(i[1:] / self.num_cells)
             prop_dead.append(i[0] / self.num_cells)
 
-        state["var"] = {"seed": SEED,
+        state["var"] = {"seed": self.seed,
                         "system_size": self.num_cells,
                         "time_steps": self.max_steps}
 
@@ -165,18 +160,23 @@ class Grid:
                          "prop_dead": prop_dead,
                          "time_evol": self.img_frames}
 
-        with open(FILENAME, "wb") as file:
+        with open(state_path, "wb") as file:
             pickle.dump(state, file)
+
+    def animate(self, frame):
+        next_frame = self.img_frames[frame]
+        self.first_frame.set_array(next_frame)
+        return next_frame
 
 
 class PlainGrid(Grid):
     # Defines the initial grid set-up and each time step
-    def __init__(self, n, max_steps):
-        Grid.__init__(self, n, max_steps, self.one_time_step)
+    def __init__(self, n, max_steps, seed=12345):
+        Grid.__init__(self, seed, n, max_steps, self.one_time_step)
         self.grid = self.initial_grid()
 
     def initial_grid(self):
-        np.random.seed(SEED)  # Initialises the randomly populated grid with a fixed seed
+        np.random.seed(self.seed)  # Initialises the randomly populated grid with a fixed seed
         grid = np.random.choice(4, size=(self.length, self.length), p=[0.76, 0.08, 0.08, 0.08])
         # grid = np.pad(grid, pad_width=1, mode='constant', constant_values=0)  # Adds an empty border
         return grid
@@ -193,3 +193,4 @@ class PlainGrid(Grid):
                 reaction_count += 1
 
         self.img_frames.append(np.copy(self.grid))
+
