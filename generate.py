@@ -33,30 +33,32 @@ class Grid:
         self.replacement_param = 0  # A + B --> A + A
         self.mutation_param = 0  # A --> B
 
-        # Average probability of an interaction in the next time step dt
-        self.dispatcher = [self.exchange]
-        self.pairings = {"death": self.death_param,
-                         "exchange": self.exchange_param,
-                         "mutation": self.mutation_param,
-                         "selection": self.selection_param,
-                         "replacement": self.replacement_param,
-                         "reproduction": self.reproduction_param}
+        self.dispatcher, self.diff_prob = [self.exchange], []
+        self.current_cell = ()  # Coordinates of the current chosen cell
+        self.current_neighbours = []  # List of neighbours for the current chosen cell
+        self.img_frames = []  # Stores the grid array at every time step
+        self.first_frame = None  # Initialises the first frame for animation
 
-        diff_prob = [self.pairings[d.__name__] for d in self.dispatcher]
+    def set_up_dispatcher(self):
+        pairings = {"death": self.death_param,
+                    "exchange": self.exchange_param,
+                    "mutation": self.mutation_param,
+                    "selection": self.selection_param,
+                    "replacement": self.replacement_param,
+                    "reproduction": self.reproduction_param}
+
+        # Average probability of an interaction in the next time step dt
+        diff_prob = [pairings[d.__name__] for d in self.dispatcher]
         total_prob = sum(diff_prob)
         self.diff_prob = np.divide(diff_prob, total_prob)
-
-        self.current_cell = ()
-        self.current_neighbours = []
-        self.img_frames = []  # Stores the grid array at every time step
-        self.first_frame = None  # Initialises the first frame for animation later
+        return self.diff_prob
 
     def call(self):
         # Reiterates each time step until the step limit has been reached
+        self.set_up_dispatcher()
         for i in tqdm(range(self.max_steps), desc="Progress bar"):
             self.one_time_step()
             self.current_step_count = i
-
         print("Simulation complete, now loading animation...")
 
     def call_neighbours(self, cell_coord):
@@ -133,6 +135,7 @@ class Grid:
 
         anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
         anim.save(movie_path, writer=animation.FFMpegWriter(fps=60))
+        print("Animation complete, mp4 video saved")
         plt.close()
 
     def save_state(self, state_path="./output/state.pickle"):
@@ -194,3 +197,7 @@ class PlainGrid(Grid):
 
         self.img_frames.append(np.copy(self.grid))
 
+
+test = PlainGrid(30, 150)
+test.call()
+test.save_video(ffmpeg_path=FFMPEG_PATH)
