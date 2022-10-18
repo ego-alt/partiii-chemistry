@@ -196,8 +196,3 @@ class PlainGrid(Grid):
                 reaction_count += 1
 
         self.img_frames.append(np.copy(self.grid))
-
-
-test = PlainGrid(30, 150)
-test.call()
-test.save_video(ffmpeg_path=FFMPEG_PATH)
