@@ -20,7 +20,7 @@ class Grid:
         self.current_step_count = 0  # Counts the number of time steps
         self.cell_status = [1, 2, 3]  # 1= type A(red), 2= type B(blue), 3= type C(yellow)
         self.periodic_boundary_on = False
-        self.ising_on = True  # TRUE/FALSE for biased diffusion
+        self.ising_on = False  # TRUE/FALSE for biased diffusion
         self.one_time_step = one_time_step
 
         self.reproduction_param = 1  # A + 0 --> A + A
@@ -28,12 +28,12 @@ class Grid:
         self.exchange_param = 1.e-6 * self.num_cells / 2  # M = 2 * exchange_param / number of sites
         # Newly introduced parameters
         self.ising_param = 1.2
-        self.death_param = 0.6
+        self.death_param = 0
         # Additional parameters set in Szczesny, Mobilia & Rucklidge (2014)
         self.replacement_param = 0  # A + B --> A + A
         self.mutation_param = 0  # A --> B
 
-        self.dispatcher, self.diff_prob = [self.exchange], []
+        self.dispatcher, self.diff_prob = [self.exchange, self.reproduction, self.selection], []
         self.current_cell = ()  # Coordinates of the current chosen cell
         self.current_neighbours = []  # List of neighbours for the current chosen cell
         self.img_frames = []  # Stores the grid array at every time step
@@ -53,13 +53,14 @@ class Grid:
         self.diff_prob = np.divide(diff_prob, total_prob)
         return self.diff_prob
 
-    def call(self):
+    def call(self, state_path="./output/state.pickle"):
         # Reiterates each time step until the step limit has been reached
         self.set_up_dispatcher()
         for i in tqdm(range(self.max_steps), desc="Progress bar"):
             self.one_time_step()
             self.current_step_count = i
-        print("Simulation complete, now loading animation...")
+        self.save_state(state_path)
+        print("Simulation complete, data compiled")
 
     def call_neighbours(self, cell_coord):
         x, y = cell_coord[0], cell_coord[1]
@@ -132,13 +133,12 @@ class Grid:
 
         if ffmpeg_path:
             plt.rcParams["animation.ffmpeg_path"] = ffmpeg_path
-
         anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
         anim.save(movie_path, writer=animation.FFMpegWriter(fps=60))
-        print("Animation complete, mp4 video saved")
+        print("Animation complete")
         plt.close()
 
-    def save_state(self, state_path="./output/state.pickle"):
+    def save_state(self, state_path):
         state = {}
         prop_full, prop_dead = [], []
 
@@ -150,7 +150,6 @@ class Grid:
         state["var"] = {"seed": self.seed,
                         "system_size": self.num_cells,
                         "time_steps": self.max_steps}
-
         state["param"] = {"exchange": self.exchange_param,
                           "death": self.death_param,
                           "ising": self.ising_param,
@@ -158,7 +157,6 @@ class Grid:
                           "replacement": self.replacement_param,
                           "reproduction": self.reproduction_param,
                           "selection": self.selection_param}
-
         state["data"] = {"prop_full": prop_full,
                          "prop_dead": prop_dead,
                          "time_evol": self.img_frames}
@@ -196,3 +194,7 @@ class PlainGrid(Grid):
                 reaction_count += 1
 
         self.img_frames.append(np.copy(self.grid))
+
+
+test = PlainGrid(50, 1000)
+test.call()
