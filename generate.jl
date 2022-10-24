@@ -107,8 +107,8 @@ function call(n::Int, max_steps::Int, filename::String="")
                 ! (event == exchange) ? event(grid, x, y, new_x, new_y) :
                                         event(grid, x, y, new_x, new_y, ising_on)
             end
-        ! isempty(filename) && push!(img_frames, to_colour.(grid))
         end
+        ! isempty(filename) && push!(img_frames, to_colour.(grid))
     end
 
     # Saving the raw data for visualisation later
