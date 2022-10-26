@@ -1,8 +1,11 @@
-using Pkg
-Pkg.add("StatsBase")
-Pkg.add("DataStructures")
-Pkg.add("JLD2")
-Pkg.add("ProgressBars")
+module Project
+
+# using Pkg
+# Pkg.add("StatsBase", preserve=PRESERVE_DIRECT)
+# Pkg.add("DataStructures", preserve=PRESERVE_DIRECT)
+# Pkg.add("JLD2", preserve=PRESERVE_DIRECT)
+# Pkg.add("ProgressBars", preserve=PRESERVE_DIRECT)
+# Pkg.add("Plots", preserve=PRESERVE_DIRECT)
 using StatsBase, DataStructures, JLD2, ProgressBars
 using Random, Plots, FixedPointNumbers
 
@@ -17,36 +20,45 @@ function call_neighbours(x, y, n)
                   (mod1(x + 1, n), y),
                   (mod1(x - 1, n), y)]
     if ! periodic_boundary_on
-        neighbours = [(w, z) for (w, z) in neighbours if w in x ± 1 || z in y ± 1]
+        neighbours = [(w, z) for (w, z) in neighbours if w in x ± 1 || z in y ± 1] # Remove neighbours which require a wraparound
     else
         return neighbours
     end
 end
 
 function calc_neighbours(grid::Array, neighbours::Vector)
-    num_full = sum([1 for (x, y) in neighbours if grid[x, y] > 0])
+    num_full = sum([1 for (x, y) in neighbours if grid[x, y] > 0]) # Count the number of filled neighbours
 end
 
 function death(grid::Array, x::Int, y::Int, args...)
     grid[x, y] = 0
 end
 
+# Consider the 3 neighbours around cell A and the 3 neighbours around dead cell 0 (A <--> 0)
+# n1 filled neighbours for A --> s(i) . ∑s(i)s(j) = n1 - (3 - n1)
+# n2 filled neighbours for 0 --> s(i) . ∑s(i)s(j) = (3 - n2) - n2
+# Original configuration: no. of stabilising pair interactions = 2 * n1 - 2 * n2
+# New configuration: no. of stabilising pair interactions = 2 * n2 - 2 * n1
+
 function exchange(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int, ising_on::Bool)
-    if ! ising_on || grid[new_x, new_y] > 0
+    if ! ising_on || grid[new_x, new_y] > 0 # If the neighbour selected is dead: --> immediately perform the exchange
         grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
     else
         n, n = size(grid)
-        calc_original = calc_neighbours(grid, call_neighbours(x, y, n))
-        calc_new = calc_neighbours(grid, call_neighbours(new_x, new_y, n)) - 1
-        if rand() < ising(calc_original, calc_new)
+        calc_original = calc_neighbours(grid, call_neighbours(x, y, n)) # Calculate nearest neighbours (non-periodic)
+        calc_new = calc_neighbours(grid, call_neighbours(new_x, new_y, n)) - 1 # Remove 1 to account for the swap
+
+        if rand() < ising(calc_original, calc_new) # If random number < P(accepting the exchange): --> perform the exchange
             grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
         end
     end
 end
 
 function ising(calc_original::Int, calc_new::Int)
-    Δ = calc_original - calc_new
-    prob = min(1, exp(- 2 * Δ * pairings[ising]))
+    # Calculate the change in stabilising pair interactions
+    Δ = 4 * (calc_original - calc_new) # Compute change in no. of stabilising pair interactions
+    prob = min(1, exp(- Δ * pairings[ising])) # If Δ < 0, i.e. stabilisation increases: choose 1 --> immediately perform the exchange;
+    #                                           If Δ > 0, i.e. stabilisation decreases: choose exp(-ve), i.e. < 1
 end
 
 function reproduction(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int)
@@ -64,7 +76,7 @@ end
 # Bulk flow of Monte Carlo simulations
 pairings = Dict{Function, Real}(death => 0,
                                 exchange => 1,
-                                ising => 0.7,
+                                ising => 0.2,
                                 reproduction => 0,
                                 selection => 0)
 periodic_boundary_on = false
@@ -72,16 +84,14 @@ periodic_boundary_on = false
 function to_colour(i::Int)
     if i == 0
         return colorant"black"
-    else
+    elseif i == 1
         return colorant"red"
+    elseif i == 2
+        return colorant"blue"
+    elseif i == 3
+        return colorant"yellow"
     end
 end
-    # elseif i == 1
-        # return colorant"red"
-    # elseif i == 2
-        # return colorant"blue"
-    # elseif i == 3
-        # return colorant"yellow
 
 
 function initial_grid(n::Int, default_seed::Int=123456)
@@ -93,6 +103,7 @@ function call(n::Int, max_steps::Int, filename::String="")
     tot_cells = n * n
     grid = initial_grid(n)
     img_frames = [to_colour.(grid)]
+    # img_frames = [grid]
     new_pairings = [(a, b) for (a, b) in pairings if b > 0 && a != ising]
     active_events, probabilities = unzip(new_pairings)
     probabilities = probabilities / sum(probabilities)
@@ -109,6 +120,7 @@ function call(n::Int, max_steps::Int, filename::String="")
             end
         end
         ! isempty(filename) && push!(img_frames, to_colour.(grid))
+        # ! isempty(filename) && push!(img_frames, grid)
     end
 
     # Saving the raw data for visualisation later
@@ -150,3 +162,4 @@ function summarise(filename::String)
     println("########################################")
 end
 
+end # module Project

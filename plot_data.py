@@ -1,7 +1,8 @@
-import pickle
+"""Run in Python REPL"""
 
-FILENAME = "./output/state.pickle"
+import julia
+# julia.install()
+from julia import Pkg
 
-with open(FILENAME, 'rb') as f:
-    data = pickle.load(f)
-    print(data["var"]["time_steps"])
+Pkg.activate("Project")
+from julia import Project
