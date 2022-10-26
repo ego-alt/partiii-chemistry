@@ -15,9 +15,9 @@ unzip(a) = map(x->getfield.(a, x), fieldnames(eltype(a)))
 
 # Definition of interaction events
 function call_neighbours(x, y, n)
-    neighbours = [(x, mod1(y + 1, n)),
-                  (x, mod1(y - 1, n)),
-                  (mod1(x + 1, n), y),
+    neighbours = [(x, mod1(y + 1, n)), 
+                  (x, mod1(y - 1, n)), 
+                  (mod1(x + 1, n), y), 
                   (mod1(x - 1, n), y)]
     if ! periodic_boundary_on
         neighbours = [(w, z) for (w, z) in neighbours if w in x ± 1 || z in y ± 1] # Remove neighbours which require a wraparound
@@ -50,14 +50,14 @@ function exchange(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int, ising_on:
 
         if rand() < ising(calc_original, calc_new) # If random number < P(accepting the exchange): --> perform the exchange
             grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
-        end
+        end        
     end
 end
 
 function ising(calc_original::Int, calc_new::Int)
     # Calculate the change in stabilising pair interactions
     Δ = 4 * (calc_original - calc_new) # Compute change in no. of stabilising pair interactions
-    prob = min(1, exp(- Δ * pairings[ising])) # If Δ < 0, i.e. stabilisation increases: choose 1 --> immediately perform the exchange;
+    prob = min(1, exp(- Δ * pairings[ising])) # If Δ < 0, i.e. stabilisation increases: choose 1 --> immediately perform the exchange; 
     #                                           If Δ > 0, i.e. stabilisation decreases: choose exp(-ve), i.e. < 1
 end
 
@@ -73,14 +73,15 @@ function selection(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int)
     end
 end
 
-# Bulk flow of Monte Carlo simulations
-pairings = Dict{Function, Real}(death => 0,
-                                exchange => 1,
-                                ising => 0.2,
-                                reproduction => 0,
+# Basic parameters
+pairings = Dict{Function, Real}(death => 0, 
+                                exchange => 1, 
+                                ising => 0.2, 
+                                reproduction => 0, 
                                 selection => 0)
 periodic_boundary_on = false
 
+# Bulk flow of Monte Carlo simulations
 function to_colour(i::Int)
     if i == 0
         return colorant"black"
@@ -93,45 +94,45 @@ function to_colour(i::Int)
     end
 end
 
+function pair_handler()
+    for (k, v) in parameters
+        println("$k => $v")
+    end
+end
+
+function pair_handler(name::Function, param::Real)
+    pairings[name] = param
+    pair_handler()
+end
 
 function initial_grid(n::Int, default_seed::Int=123456)
     Random.seed!(default_seed)
     sample(0:3, Weights([6, 1, 1, 1]), (n, n))
 end
 
-function call(n::Int, max_steps::Int, filename::String="")
+function call(n::Int, max_steps::Int)
     tot_cells = n * n
     grid = initial_grid(n)
-    img_frames = [to_colour.(grid)]
-    # img_frames = [grid]
+    img_frames = [copy(grid)]
     new_pairings = [(a, b) for (a, b) in pairings if b > 0 && a != ising]
     active_events, probabilities = unzip(new_pairings)
     probabilities = probabilities / sum(probabilities)
     ising_on = pairings[ising] > 0
-
+    
     for time_step ∈ ProgressBar(1:max_steps)
         for cell_step ∈ 1:tot_cells
             x, y = rand(1:n, 2)
             if grid[x, y] > 0
                 new_x, new_y = rand(call_neighbours(x, y, n))
                 event = sample(active_events, Weights(probabilities))
-                ! (event == exchange) ? event(grid, x, y, new_x, new_y) :
+                ! (event == exchange) ? event(grid, x, y, new_x, new_y) : 
                                         event(grid, x, y, new_x, new_y, ising_on)
             end
         end
-        ! isempty(filename) && push!(img_frames, to_colour.(grid))
-        # ! isempty(filename) && push!(img_frames, grid)
+        push!(img_frames, copy(grid))
     end
-
-    # Saving the raw data for visualisation later
     println("Simulation complete, compiling data...")
-    if ! isempty(filename)
-        img_frames = cat(dims=3, img_frames...)
-        save(filename * ".gif", img_frames, fps=5)
-        jldsave(filename * ".jld2"; grid_length=n, time_steps=max_steps, parameters=pairings, time_evol=img_frames)
-        println("Animation saved")
-    end
-    return to_colour.(grid)
+    return img_frames
 end
 
 # Extract data from .jld2 files
@@ -161,5 +162,6 @@ function summarise(filename::String)
     println("Empty => $empty ($empty_p%)")
     println("########################################")
 end
+
 
 end # module Project
