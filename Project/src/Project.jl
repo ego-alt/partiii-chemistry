@@ -74,11 +74,11 @@ function selection(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int)
 end
 
 # Basic parameters
-pairings = Dict{Function, Real}(death => 0, 
-                                exchange => 1, 
-                                ising => 0.2, 
-                                reproduction => 0, 
-                                selection => 0)
+pairings = Dict{Function, Real}(death => 0,
+                                exchange => 0,
+                                ising => 0,
+                                reproduction => 1,
+                                selection => 1)
 periodic_boundary_on = false
 
 # Bulk flow of Monte Carlo simulations
@@ -102,9 +102,12 @@ function pair_handler(; write::Bool=false)
     if (write) save_pairing end
 end
 
-function pair_handler(name::Function, param::Real)
-    pairings[name] = param
-    println("$name => $param")
+function pair_handler(pair::Tuple{String, Real}...)
+    for (name, param) in pair
+        name = Symbol(name)
+        pairings[@eval $name] = param
+        println("$name => $param")
+    end
 end
 
 function initial_grid(n::Int, default_seed::Int=123456)
