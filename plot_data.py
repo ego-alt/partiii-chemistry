@@ -44,11 +44,12 @@ class Reader:
     def __init__(self, pickle_path):
         with open(pickle_path, "rb") as f:
             data = pickle.load(f)
+        self.length, _ = data["N"]
+        self.time_steps = data["time_steps"]
+        self.time_evol = data["evolution"]
 
         self.pickle_path = pickle_path
         self.cells = {0: "Dead", 1: "Type A", 2: "Type B", 3: "Type C"}
-        self.time_steps = data["time_steps"]
-        self.time_evol = data["evolution"]
 
     def populations(self):
         pop = list(map(self.count, self.cells.keys()))
@@ -66,4 +67,18 @@ class Reader:
         return n
 
     def energy(self):
-        pass
+        energy = [self.count_pairs(i) for i in self.time_evol]
+        plt.title("System energy against time")
+        plt.ylabel("Energy (J / kT)")
+        plt.xlabel("Time steps")
+        plt.plot(range(self.time_steps + 1), energy)
+        plt.show()
+
+    def count_pairs(self, grid):
+        # Calculates the difference ./. numbers of like pairs and unlike pairs
+        grid = grid > 0
+        leftshifted, downshifted = grid[:, 1:], grid[1:, :]
+        horizontal_n = np.sum(grid[:, :-1] == leftshifted)  # Number of favourable left-right interactions
+        vertical_n = np.sum(grid[:-1, :] == downshifted)  # Number of favourable up-down interactions
+        total_n = 2 * (self.length - 1) * self.length  # Total no. of adjacent pairs in the system
+        return total_n - 2 * (horizontal_n + vertical_n)

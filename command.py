@@ -9,10 +9,10 @@ Pkg.activate("Project")
 from julia import Project
 from plot_data import Reader, Writer
 
-Project.pair_handler(Project.death, 0.4)
+Project.pair_handler(("exchange", 1), ("ising", 0.6), ("reproduction", 0), ("selection", 0))
 
 for i in [0.05, 0.5, 5]:
-    Project.pair_handler(Project.exchange, i)
+    Project.pair_handler(("exchange", i))
     x = Project.call(100, 4000)
     y = Writer(x)
     y.save_video(f"e{i}d6.mp4")
