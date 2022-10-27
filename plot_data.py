@@ -3,6 +3,7 @@ from matplotlib.colors import ListedColormap
 import matplotlib.animation as animation
 import pickle
 
+FILEDIR = "./output/"
 FFMPEG_PATH = "/usr/local/bin/ffmpeg"
 
 
@@ -19,7 +20,7 @@ class Writer:
         if self.ffmpeg_path:
             plt.rcParams["animation.ffmpeg_path"] = self.ffmpeg_path
         anim = animation.FuncAnimation(fig, self.animate, frames=len(self.img_frames))
-        anim.save(movie_path, writer=animation.FFMpegWriter(fps=60))
+        anim.save(FILEDIR + movie_path, writer=animation.FFMpegWriter(fps=60))
         print("Animation complete")
         plt.close()
 
@@ -34,7 +35,7 @@ class Writer:
                  "parameters": pairings,
                  "evolution": self.img_frames}
 
-        with open(pickle_path, "wb") as file:
+        with open(FILEDIR + pickle_path, "wb") as file:
             pickle.dump(state, file)
 
 

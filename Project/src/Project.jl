@@ -94,15 +94,17 @@ function to_colour(i::Int)
     end
 end
 
-function pair_handler()
-    for (k, v) in parameters
-        println("$k => $v")
+function pair_handler(; write::Bool=false)
+    save_pairing = Dict{String, Real}()
+    for (k, v) in pairings
+        write ? save_pairing["$k"] = v : println("$k => $v")
     end
+    if (write) save_pairing end
 end
 
 function pair_handler(name::Function, param::Real)
     pairings[name] = param
-    pair_handler()
+    println("$name => $param")
 end
 
 function initial_grid(n::Int, default_seed::Int=123456)
