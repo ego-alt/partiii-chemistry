@@ -41,7 +41,7 @@ end
 # New configuration: no. of stabilising pair interactions = 2 * n2 - 2 * n1
 
 function exchange(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int, ising_on::Bool)
-    if ! ising_on || grid[new_x, new_y] > 0 # If the neighbour selected is dead: --> immediately perform the exchange
+    if ! ising_on || grid[new_x, new_y] > 0 # If the neighbour selected is alive: --> immediately perform the exchange
         grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
     else
         n, n = size(grid)
@@ -50,14 +50,14 @@ function exchange(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int, ising_on:
 
         if rand() < ising(calc_original, calc_new) # If random number < P(accepting the exchange): --> perform the exchange
             grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
-        end        
+        end
     end
 end
 
 function ising(calc_original::Int, calc_new::Int)
     # Calculate the change in stabilising pair interactions
     Δ = 4 * (calc_original - calc_new) # Compute change in no. of stabilising pair interactions
-    prob = min(1, exp(- Δ * pairings[ising])) # If Δ < 0, i.e. stabilisation increases: choose 1 --> immediately perform the exchange; 
+    prob = min(1, exp(- Δ * pairings[ising])) # If Δ < 0, i.e. stabilisation increases: choose 1 --> immediately perform the exchange;
     #                                           If Δ > 0, i.e. stabilisation decreases: choose exp(-ve), i.e. < 1
 end
 
@@ -110,14 +110,14 @@ function pair_handler(pair::Tuple{String, Real}...)
     end
 end
 
-function initial_grid(n::Int, default_seed::Int=123456)
+function initial_grid(n::Int, default_seed::Int)
     Random.seed!(default_seed)
     sample(0:3, Weights([6, 1, 1, 1]), (n, n))
 end
 
-function call(n::Int, max_steps::Int)
+function call(n::Int, max_steps::Int; seed::Int=123456)
     tot_cells = n * n
-    grid = initial_grid(n)
+    grid = initial_grid(n, seed)
     img_frames = [copy(grid)]
     new_pairings = [(a, b) for (a, b) in pairings if b > 0 && a != ising]
     active_events, probabilities = unzip(new_pairings)
@@ -130,7 +130,7 @@ function call(n::Int, max_steps::Int)
             if grid[x, y] > 0
                 new_x, new_y = rand(call_neighbours(x, y, n))
                 event = sample(active_events, Weights(probabilities))
-                ! (event == exchange) ? event(grid, x, y, new_x, new_y) : 
+                ! (event == exchange) ? event(grid, x, y, new_x, new_y) :
                                         event(grid, x, y, new_x, new_y, ising_on)
             end
         end
