@@ -32,7 +32,6 @@ class Writer:
 
     def save_state(self, pairings, pickle_path):
         state = {"N": self.img_frames[0].shape,
-                 "time_steps": len(self.img_frames) - 1,
                  "parameters": pairings,
                  "evolution": self.img_frames}
 
@@ -54,22 +53,22 @@ class Reader:
         with open(self.pickle_path, "rb") as f:
             data = pickle.load(f)
 
-        self.cells = {0: "Dead", 1: "Type A", 2: "Type B", 3: "Type C"}
         self.length, _ = data["N"]
-        self.time_steps = data["time_steps"]
         self.time_evol = np.asarray(data["evolution"])
-        self.pop = list(map(self.count, self.cells.keys()))
+        self.time_steps = (len(self.time_evol) - 1) * 10 + 1
         self.total_n = 2 * (self.length - 1) * self.length  # Total no. of adjacent pairs in the system
+        self.cells = {0: "Dead", 1: "Type A", 2: "Type B", 3: "Type C"}
 
     def populations(self):
         plt.title("Populations against time")
         plt.ylabel("Number of cells")
         plt.xlabel("Time steps")
-        for ind, n in enumerate(self.pop):
-            plt.plot(range(self.time_steps + 1), n, label=self.cells[ind])
+        pop = list(map(self.count, self.cells.keys()))
+        for ind, n in enumerate(pop):
+            plt.plot(range(0, self.time_steps, 10), n, label=self.cells[ind])
         plt.legend()
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}.png")
-        plt.show()
+        plt.clf()
 
     def count(self, i):
         n = [np.count_nonzero(arr == i) for arr in self.time_evol]
@@ -77,12 +76,14 @@ class Reader:
 
     def frequencies(self):
         fig, axs = plt.subplots(1, 4, figsize=(30, 10), tight_layout=True)
-        for ind, n in enumerate(self.pop):
+        pop = list(map(self.count, self.cells.keys()))
+        for ind, n in enumerate(pop):
             axs[ind].hist(n)
             axs[ind].set(title=f"{self.cells[ind]}",
                          xlabel="Number of cells", ylabel="Frequency")
         fig.suptitle("Distribution of cell populations")
         fig.savefig(f"{self.pickle_path.replace('.pickle', '')}_freq.png")
+        plt.clf()
 
     def energy(self):
         alive_or_dead = self.time_evol > 0
@@ -91,9 +92,9 @@ class Reader:
         plt.title("System energy against time")
         plt.ylabel("Energy (J / kT)")
         plt.xlabel("Time steps")
-        plt.plot(range(self.time_steps + 1), energy)
+        plt.plot(range(0, self.time_steps, 10), energy)
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}_energy.png")
-        plt.show()
+        plt.clf()
 
     def pairs(self):
         alive_or_dead = self.time_evol > 0
@@ -107,4 +108,4 @@ class Reader:
         plt.plot(range(self.time_steps + 1), sel_pairs, label="Selection")
         plt.legend()
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}_pairs.png")
-        plt.show()
+        plt.clf()
