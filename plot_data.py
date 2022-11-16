@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import matplotlib.animation as animation
 import pickle
+import os
 
 FILEDIR = "./output/"
 FFMPEG_PATH = "/usr/local/bin/ffmpeg"
@@ -54,7 +55,7 @@ class Reader:
             data = pickle.load(f)
 
         self.length, _ = data["N"]
-        self.time_evol = np.asarray(data["evolution"])
+        self.time_evol = data["evolution"]
         self.time_steps = (len(self.time_evol) - 1) * 10 + 1
         self.total_n = 2 * (self.length - 1) * self.length  # Total no. of adjacent pairs in the system
         self.cells = {0: "Dead", 1: "Type A", 2: "Type B", 3: "Type C"}
@@ -71,10 +72,11 @@ class Reader:
         plt.clf()
 
     def count(self, i):
-        n = [np.count_nonzero(arr == i) for arr in self.time_evol]
+        n = [np.count_nonzero(arr == i) for arr in np.asarray(self.time_evol)]
         return n
 
     def frequencies(self):
+        # NOT IN USE
         fig, axs = plt.subplots(1, 4, figsize=(30, 10), tight_layout=True)
         pop = list(map(self.count, self.cells.keys()))
         for ind, n in enumerate(pop):
@@ -86,7 +88,7 @@ class Reader:
         plt.clf()
 
     def energy(self):
-        alive_or_dead = self.time_evol > 0
+        alive_or_dead = np.asarray(self.time_evol > 0)
         energy = [self.total_n - 2 * count_like_pairs(i) for i in alive_or_dead]
 
         plt.title("System energy against time")
@@ -98,7 +100,7 @@ class Reader:
 
     def pairs(self):
         alive_or_dead = self.time_evol > 0
-        identical_pairs = np.asarray([count_like_pairs(i) for i in self.time_evol])
+        identical_pairs = np.asarray([count_like_pairs(i) for i in np.asarray(self.time_evol)])
         similar_pairs = np.asarray([count_like_pairs(i) for i in alive_or_dead])
 
         plt.title("Number of interaction pairs against time")
@@ -109,3 +111,18 @@ class Reader:
         plt.legend()
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}_pairs.png")
         plt.clf()
+
+
+def plot_fraction(dir, label):
+    reduction = []
+    for file in os.scandir(dir):
+        file = os.path.join(dir, file.name)
+        if ".pickle" in file:
+            z = Reader(file).time_evol
+            reduction.append(np.asarray([len(np.unique(frame)) == 2 for frame in z]))
+    plt.title("Fraction of trials which support three colours $f_{coexistence}$")
+    plt.xlabel("Time steps")
+    plt.xlim(0, 10000)
+    plt.ylim(0, 1)
+    plt.plot(range(0, 10001, 10), 1 - sum(reduction) / len(reduction), label=label)
+    plt.legend()
