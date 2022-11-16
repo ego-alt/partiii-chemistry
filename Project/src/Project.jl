@@ -13,12 +13,12 @@ using Random, Plots, FixedPointNumbers
 x ± y = (x-y, x+y)
 unzip(a) = map(x->getfield.(a, x), fieldnames(eltype(a)))
 
-# Returns list of neighbours for [row x col] array
-function call_neighbours(x, y, row, col)
-    neighbours = [(x, mod1(y + 1, col)),
-                  (x, mod1(y - 1, col)),
-                  (mod1(x + 1, row), y),
-                  (mod1(x - 1, row), y)]
+# Returns list of neighbours for [n x n] array
+function call_neighbours(x, y, n)
+    neighbours = [(x, mod1(y + 1, n)),
+                  (x, mod1(y - 1, n)),
+                  (mod1(x + 1, n), y),
+                  (mod1(x - 1, n), y)]
     if ! periodic_boundary_on
         neighbours = [(w, z) for (w, z) in neighbours if w in x ± 1 || z in y ± 1] # Remove neighbours which require a wraparound
     else
@@ -41,9 +41,9 @@ function exchange(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int, ising_on:
     if ! ising_on || grid[new_x, new_y] > 0 # If the neighbour selected is alive: --> immediately perform the exchange
         grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
     else
-        row, col = size(grid)
-        calc_original = calc_neighbours(grid, call_neighbours(x, y, row, col)) # Calculate nearest neighbours (non-periodic)
-        calc_new = calc_neighbours(grid, call_neighbours(new_x, new_y, row, col)) - 1 # Remove 1 to account for the swap
+        n, _ = size(grid)
+        calc_original = calc_neighbours(grid, call_neighbours(x, y, n)) # Calculate nearest neighbours (non-periodic)
+        calc_new = calc_neighbours(grid, call_neighbours(new_x, new_y, n)) - 1 # Remove 1 to account for the swap
 
         if rand() < ising(calc_original, calc_new) # If random number < P(accepting the exchange): --> perform the exchange
             grid[x, y], grid[new_x, new_y] = grid[new_x, new_y], grid[x, y]
@@ -76,7 +76,7 @@ end
 
 # Basic parameters
 pairings = Dict{Function, Real}(death => 0,
-                                exchange => 0,
+                                exchange => 0.5,
                                 ising => 0,
                                 reproduction => 1,
                                 selection => 1)
@@ -141,7 +141,7 @@ function call(n::Int, max_steps::Int; seed::Int=123456)
         for cell_step ∈ 1:tot_cells
             x, y = rand(1:n, 2)
             if grid[x, y] > 0
-                new_x, new_y = rand(call_neighbours(x, y, n, n))
+                new_x, new_y = rand(call_neighbours(x, y, n))
                 event = sample(active_events, Weights(probabilities))
                 ! (event == exchange) ? event(grid, x, y, new_x, new_y) :
                                         event(grid, x, y, new_x, new_y, ising_on)
