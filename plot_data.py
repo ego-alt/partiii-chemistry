@@ -55,10 +55,12 @@ class Reader:
             data = pickle.load(f)
 
         self.length, _ = data["N"]
-        self.time_evol = data["evolution"]
+        self.parameters = data["parameters"]
+        self.time_evol = np.asarray(data["evolution"])
         self.time_steps = (len(self.time_evol) - 1) * 10 + 1
-        self.total_n = 2 * (self.length - 1) * self.length  # Total no. of adjacent pairs in the system
         self.cells = {0: "Dead", 1: "Type A", 2: "Type B", 3: "Type C"}
+
+        self.total_n = 2 * (self.length - 1) * self.length  # Total no. of adjacent pairs in the system
 
     def populations(self):
         plt.title("Populations against time")
@@ -71,33 +73,88 @@ class Reader:
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}.png")
         plt.clf()
 
-    def count(self, i):
-        n = [np.count_nonzero(arr == i) for arr in np.asarray(self.time_evol)]
-        return n
-
-    def frequencies(self):
-        # NOT IN USE
-        fig, axs = plt.subplots(1, 4, figsize=(30, 10), tight_layout=True)
-        pop = list(map(self.count, self.cells.keys()))
-        for ind, n in enumerate(pop):
-            axs[ind].hist(n)
-            axs[ind].set(title=f"{self.cells[ind]}",
-                         xlabel="Number of cells", ylabel="Frequency")
-        fig.suptitle("Distribution of cell populations")
-        fig.savefig(f"{self.pickle_path.replace('.pickle', '')}_freq.png")
-        plt.clf()
-
     def energy(self):
-        alive_or_dead = np.asarray(self.time_evol > 0)
-        energy = [self.total_n - 2 * count_like_pairs(i) for i in alive_or_dead]
-
         plt.title("System energy against time")
         plt.ylabel("Energy (J / kT)")
         plt.xlabel("Time steps")
-        plt.plot(range(0, self.time_steps, 10), energy)
+        plt.plot(range(0, self.time_steps, 10), self.measure_energy())
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}_energy.png")
         plt.clf()
 
+    def measure_energy(self):
+        alive_or_dead = self.time_evol > 0
+        energy = np.asarray([self.total_n - count_like_pairs(i) for i in alive_or_dead])
+        return energy
+
+    def count(self, i):
+        n = [np.count_nonzero(arr == i) for arr in self.time_evol]
+        return n
+
+    def count_particles(self):
+        n = np.asarray([np.count_nonzero(arr > 0) for arr in np.asarray(self.time_evol)])
+        return n
+
+    def count_coexistence(self, i):
+        n = np.asarray([len(np.unique(frame)) == i for frame in self.time_evol])
+        return n
+
+
+def plot_crowdedness(dir_list, label_list, name):
+    plt.title("Measure of crowdedness at different mobilities")
+    plt.ylabel("$n_{empty neighbours}/N$")
+    plt.xlabel("Time steps")
+    for ind, dir in enumerate(dir_list):
+        x, num = 0, 0
+        for file in os.scandir(dir):
+            file = os.path.join(dir, file.name)
+            if ".pickle" in file:
+                z = Reader(file)
+                x += z.measure_energy() / z.count_particles()
+                num += 1
+        plt.plot(range(0, 10001, 10), x / num, label=label_list[ind])
+        plt.legend()
+    plt.savefig(name)
+
+
+def plot_fraction(dir_list, label_list, name):
+    plt.title("Probability of coexistence between three species")
+    plt.ylabel("Fraction of trials $f_{coexistence}$")
+    plt.xlabel("Time steps")
+    plt.xlim(0, 10000)
+    plt.ylim(0, 1)
+    for ind, dir in enumerate(dir_list):
+        reduction = []
+        for file in os.scandir(dir):
+            file = os.path.join(dir, file.name)
+            if ".pickle" in file:
+                z = Reader(file)
+                reduction.append(z.count_coexistence(4))
+        plt.plot(range(0, 10001, 10), sum(reduction) / len(reduction), label=label_list[ind])
+        plt.legend()
+    plt.savefig(name)
+
+
+def plot_min(dir_list, label_list, name):
+    plt.title("Population of the least common species over time")
+    plt.ylabel("Number of particles")
+    plt.xlabel("Time steps")
+    for ind, dir in enumerate(dir_list):
+        x, num = 0, 0
+        for file in os.scandir(dir):
+            file = os.path.join(dir, file.name)
+            if ".pickle" in file:
+                z = Reader(file)
+                minimum = np.asarray([np.min(np.unique(i, return_counts=True)[1][1:])
+                                      if len(np.unique(i, return_counts=True)[1]) == 4 else 0
+                                      for i in z.time_evol])
+                x += minimum
+                num += 1
+        plt.plot(range(0, 10001, 10), x / num, label=label_list[ind])
+        plt.legend()
+    plt.savefig(name)
+
+
+    """
     def pairs(self):
         alive_or_dead = self.time_evol > 0
         identical_pairs = np.asarray([count_like_pairs(i) for i in np.asarray(self.time_evol)])
@@ -110,19 +167,4 @@ class Reader:
         plt.plot(range(self.time_steps + 1), sel_pairs, label="Selection")
         plt.legend()
         plt.savefig(f"{self.pickle_path.replace('.pickle', '')}_pairs.png")
-        plt.clf()
-
-
-def plot_fraction(dir, label):
-    reduction = []
-    for file in os.scandir(dir):
-        file = os.path.join(dir, file.name)
-        if ".pickle" in file:
-            z = Reader(file).time_evol
-            reduction.append(np.asarray([len(np.unique(frame)) == 2 for frame in z]))
-    plt.title("Fraction of trials which support three colours $f_{coexistence}$")
-    plt.xlabel("Time steps")
-    plt.xlim(0, 10000)
-    plt.ylim(0, 1)
-    plt.plot(range(0, 10001, 10), 1 - sum(reduction) / len(reduction), label=label)
-    plt.legend()
+        plt.clf()"""
