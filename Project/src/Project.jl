@@ -9,21 +9,41 @@ module Project
 using StatsBase, DataStructures, JLD2, ProgressBars
 using Random, Plots, FixedPointNumbers
 
-# One-liners
 x ± y = (x-y, x+y)
 unzip(a) = map(x->getfield.(a, x), fieldnames(eltype(a)))
 
-# Returns list of neighbours for [n x n] array
+function to_colour(i::Int)
+    if i == 0
+        return colorant"black"
+    elseif i == 1
+        return colorant"red"
+    elseif i == 2
+        return colorant"blue"
+    elseif i == 3
+        return colorant"yellow"
+    end
+end
+
+# Returns list of neighbours for 2D case
 function call_neighbours(x, y, n)
     neighbours = [(x, mod1(y + 1, n)),
                   (x, mod1(y - 1, n)),
                   (mod1(x + 1, n), y),
                   (mod1(x - 1, n), y)]
     if ! periodic_boundary_on
-        neighbours = [(w, z) for (w, z) in neighbours if w in x ± 1 || z in y ± 1] # Remove neighbours which require a wraparound
+        # Remove neighbours which require a wraparound
+        neighbours = [(w, z) for (w, z) in neighbours if w in x ± 1 || z in y ± 1]
     else
         return neighbours
     end
+end
+
+# Returns list of neighbours for column case
+function call_col_neighbours(x, y, row, col)
+    neighbours = [(x, mod1(y + 1, col)),
+                      (x, mod1(y - 1, col)),
+                      (mod1(x + 1, row), y),
+                      (mod1(x - 1, row), y)]
 end
 
 # Consider the 3 neighbours around cell A and the 3 neighbours around dead cell 0 (A <--> 0)
@@ -75,25 +95,8 @@ function selection(grid::Array, x::Int, y::Int, new_x::Int, new_y::Int)
 end
 
 # Basic parameters
-pairings = Dict{Function, Real}(death => 0,
-                                exchange => 0.5,
-                                ising => 0,
-                                reproduction => 1,
-                                selection => 1)
+pairings = Dict{Function, Real}(death => 0, exchange => 0.5, ising => 0, reproduction => 1, selection => 1)
 periodic_boundary_on = false
-
-# Bulk flow of Monte Carlo simulations
-function to_colour(i::Int)
-    if i == 0
-        return colorant"black"
-    elseif i == 1
-        return colorant"red"
-    elseif i == 2
-        return colorant"blue"
-    elseif i == 3
-        return colorant"yellow"
-    end
-end
 
 function pair_handler(; write::Bool=false)
     save_pairing = Dict{String, Real}()
@@ -111,13 +114,14 @@ function pair_handler(pair::Tuple{String, Real}...)
     end
 end
 
+# Initial grid with 2:1 empty (dead) and filled (alive) cells
 function initial_grid(n::Int, default_seed::Int)
     Random.seed!(default_seed)
     sample(0:3, Weights([6, 1, 1, 1]), (n, n))
 end
 
+# Initial grid with alternating columns of species A, B, and C
 function initial_carpet(row::Int, num_block::Int, one_col::Int)
-    # Each "block" contains three columns of species A, B, and C
     spec, current_col = 1, 1
     x = fill(spec, (row, one_col))
     while current_col < num_block * 3
@@ -128,6 +132,7 @@ function initial_carpet(row::Int, num_block::Int, one_col::Int)
     return x
 end
 
+# Bulk flow of Monte Carlo simulations
 function call(n::Int, max_steps::Int; seed::Int=123456)
     tot_cells = n * n
     grid = initial_grid(n, seed)
@@ -153,7 +158,7 @@ function call(n::Int, max_steps::Int; seed::Int=123456)
     return img_frames
 end
 
-function call_carpet(row::Int, num_block::Int, one_col::Int, max_steps::Int)
+function call_col(row::Int, num_block::Int, one_col::Int, max_steps::Int)
    col = num_block * one_col * 3
    tot_cells = row * col
    grid = initial_carpet(row, num_block, one_col)
@@ -167,7 +172,7 @@ function call_carpet(row::Int, num_block::Int, one_col::Int, max_steps::Int)
        for cell_step ∈ 1:tot_cells
            x, y = rand(1:row), rand(1:col)
            if grid[x, y] > 0
-               new_x, new_y = rand(call_neighbours(x, y, row, col))
+               new_x, new_y = rand(call_col_neighbours(x, y, row, col))
                event = sample(active_events, Weights(probabilities))
                ! (event == exchange) ? event(grid, x, y, new_x, new_y) :
                                        event(grid, x, y, new_x, new_y, ising_on)
