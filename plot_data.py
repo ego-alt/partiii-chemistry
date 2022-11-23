@@ -148,7 +148,8 @@ def plot_min(dir_list, label_list, name):
                                       if len(np.unique(i, return_counts=True)[1]) == 4 else 0
                                       for i in z.time_evol])
                 x += minimum
-                num += 1
+                num += minimum > 0
+        num = np.where(num == 0, 1, num)
         plt.plot(range(0, 10001, 10), x / num, label=label_list[ind])
         plt.legend()
     plt.savefig(name)
