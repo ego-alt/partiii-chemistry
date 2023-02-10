@@ -40,16 +40,22 @@ class Writer:
             pickle.dump(state, file)
 
     def save_trunc(self, pickle_path):
-        a = [np.count_nonzero(arr == 1) for arr in self.img_frames]
-        b = [np.count_nonzero(arr == 2) for arr in self.img_frames]
-        c = [np.count_nonzero(arr == 3) for arr in self.img_frames]
+        a = np.asarray([np.count_nonzero(arr == 1) for arr in self.img_frames])
+        b = np.asarray([np.count_nonzero(arr == 2) for arr in self.img_frames])
+        c = np.asarray([np.count_nonzero(arr == 3) for arr in self.img_frames])
         if a[-1] and b[-1] and c[-1]:
             coexist = True
         else:
             coexist = False
-        state = {"A": a, "B": b, "C": c, "coexist": coexist}
+        file = open(FILEDIR + pickle_path, 'rb')
+        old_data = pickle.load(file)
+        old_data["A"].append(a)
+        old_data["B"].append(b)
+        old_data["C"].append(c)
+        old_data["coexist"].append(coexist)
+        new_state = {"coexist": old_data["coexist"]}
         with open(FILEDIR + pickle_path, "wb") as file:
-            pickle.dump(state, file)
+            pickle.dump(new_state, file)
 
 
 def count_like_pairs(grid):
@@ -131,19 +137,21 @@ def plot_fraction(dir_list, label_list, time_steps, name, normalise=None):
     plt.ylabel("Fraction of trials $f_{coexistence}$")
     plt.xlabel("Time steps")
     plt.ylim(0, 1)
-    # c = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
     for ind, dir in enumerate(dir_list):
         reduction = []
         for file in os.scandir(dir):
             file = os.path.join(dir, file.name)
             if ".pickle" in file:
                 z = Reader(file)
-                reduction.append(z.count_coexistence(4)[:time_steps])
+                # stop = time_steps / 10 + 1
+                # reduction.append(z.count_coexistence(4)[:stop])
+                reduction.append(z.count_coexistence(4))
         if normalise:
+            plt.plot(np.arange(0, time_steps, 10) / time_steps, sum(reduction) / len(reduction), label=label_list[ind])
             plt.xlim(0, 1)
-            plt.plot(np.arange(0, time_steps) / time_steps, sum(reduction) / len(reduction))
+            plt.legend()
         else:
-            plt.plot(np.arange(0, time_steps), sum(reduction) / len(reduction))
+            plt.plot(np.arange(0, time_steps, 10), sum(reduction) / len(reduction), label=label_list[ind])
             plt.legend()
     plt.savefig(name)
 
@@ -162,36 +170,32 @@ def plot_min(dir_list, label_list, name):
                                       if len(np.unique(i, return_counts=True)[1]) == 4 else 0
                                       for i in z.time_evol])
                 x += minimum
-                num += 1
-                # num += minimum > 0
-        # num = np.where(num == 0, 1, num)
-        plt.plot(range(0, 20001, 10), x / num, label=label_list[ind])
+                # num += 1
+                num += minimum > 0
+        num = np.where(num == 0, 1, num)
+        plt.plot(np.arange(0, 32401, 10), x / num, label=label_list[ind])
         plt.legend()
     plt.savefig(name)
 
 
-def spatial_correlation(frame, pickle_path):
-    plt.title("$<r_{A,x} r_{A,x+d}>$ for species A")
-    plt.ylabel("$<r_{A,x} r_{A,x+d}>$")
-    plt.xlabel("Distance between cells $d$")
-
+def spatial_correlation(frame, all_dist, all_count):
     # Pairwise distances between all type A particles
     N, N = frame.shape  # Always handling square lattices
+    density = np.count_nonzero(frame) / (N ** 2)
     tot_dist = np.asarray([])
     for spec in [1, 2, 3]:
         x_coord, y_coord = np.where(frame == spec)
-        a, b = np.tril_indices(len(x_coord), 0)
+        a, b = np.triu_indices(len(x_coord), k=1)
         x_dist = x_coord[a] - x_coord[b]
         y_dist = y_coord[a] - y_coord[b]
-        t_dist = np.sqrt(np.square(x_dist[x_dist]) + np.square(y_dist[y_dist]))
-        tot_dist = np.concatenate(tot_dist, t_dist)
-
+        t_dist = np.sqrt(np.square(x_dist) + np.square(y_dist))
+        tot_dist = np.concatenate((tot_dist, t_dist))
     # Plot the average product as a function of distance
-    n, count = np.unique(tot_dist, return_counts=True)
-    with open(pickle_path, "rb") as f:
-        data = pickle.load(f)
-        all_dist, all_count = data["dist"], data["count"]
-    plt.plot(range(0, N), count / (3 * all_count[np.searchsorted(all_dist, n)]))
+    bins = np.arange(0, int(N * np.sqrt(2)))
+    binned = np.digitize(tot_dist, bins)
+    n, count = np.unique(binned, return_counts=True)
+    n_ind = np.searchsorted(all_dist, n)
+    return all_dist[n_ind], count / (3 * all_count[n_ind])
 
     # Count interactions between particles of type A in the same column
     # n = np.zeros(N)
@@ -208,15 +212,16 @@ def spatial_correlation(frame, pickle_path):
 
 
 def full_count(N, pickle_path):
-    a, b = np.tril_indices(N, N)
-    a_shaped, b_shaped = a.reshape(-1, 1), b.reshape(-1, 1)
-    c, d = a_shaped.T - a_shaped, b_shaped.T - b_shaped
-    idx = np.triu_indices(len(a_shaped), k=1)
-    c, d = c[idx], d[idx]
+    a_coord, b_coord = np.tril_indices(N, N)
+    c, d = np.triu_indices(len(a_coord), k=1)
     # c = [abs(i - j) for i, j in combinations(a, 2)]
     # d = [abs(i - j) for i, j in combinations(b, 2)]
-    tot_dist = np.sqrt(np.square(c) + np.square(d))
-    dist, count = np.unique(tot_dist, return_counts=True)
+    a_dist = a_coord[c] - a_coord[d]
+    b_dist = b_coord[c] - b_coord[d]
+    tot_dist = np.sqrt(np.square(a_dist) + np.square(b_dist))
+    bins = np.arange(0, int(np.ceil(np.max(tot_dist))))
+    binned = np.digitize(tot_dist, bins)
+    dist, count = np.unique(binned, return_counts=True)
     state = {"dist": dist,
              "count": count}
     with open(pickle_path, "wb") as file:
